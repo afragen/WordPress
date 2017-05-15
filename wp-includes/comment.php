@@ -44,7 +44,7 @@ function check_comment($author, $email, $url, $comment, $user_ip, $user_agent, $
 		return false;
 
 	/** This filter is documented in wp-includes/comment-template.php */
-	$comment = apply_filters( 'comment_text', $comment );
+	$comment = apply_filters( 'comment_text', $comment, null, array() );
 
 	// Check for the number of external links if a max allowed number is set.
 	if ( $max_links = get_option( 'comment_max_links' ) ) {
@@ -170,7 +170,8 @@ function get_approved_comments( $post_id, $args = array() ) {
  * @global WP_Comment $comment
  *
  * @param WP_Comment|string|int $comment Comment to retrieve.
- * @param string $output Optional. OBJECT or ARRAY_A or ARRAY_N constants.
+ * @param string                $output  Optional. The required return type. One of OBJECT, ARRAY_A, or ARRAY_N, which correspond to
+ *                                       a WP_Comment object, an associative array, or a numeric array, respectively. Default OBJECT.
  * @return WP_Comment|array|null Depends on $output value.
  */
 function get_comment( &$comment = null, $output = OBJECT ) {
@@ -1002,12 +1003,6 @@ function get_page_of_comment( $comment_ID, $args = array() ) {
 		if ( $args['max_depth'] > 1 && 0 != $comment->comment_parent )
 			return get_page_of_comment( $comment->comment_parent, $args );
 
-		if ( 'desc' === get_option( 'comment_order' ) ) {
-			$compare = 'after';
-		} else {
-			$compare = 'before';
-		}
-
 		$comment_args = array(
 			'type'       => $args['type'],
 			'post_id'    => $comment->comment_post_ID,
@@ -1018,7 +1013,7 @@ function get_page_of_comment( $comment_ID, $args = array() ) {
 			'date_query' => array(
 				array(
 					'column' => "$wpdb->comments.comment_date_gmt",
-					$compare => $comment->comment_date_gmt,
+					'before' => $comment->comment_date_gmt,
 				)
 			),
 		);
@@ -1119,6 +1114,37 @@ function wp_get_comment_fields_max_lengths() {
 	 * @param array $lengths Associative array `'field_name' => 'maximum length'`.
 	 */
 	return apply_filters( 'wp_get_comment_fields_max_lengths', $lengths );
+}
+
+/**
+ * Compares the lengths of comment data against the maximum character limits.
+ *
+ * @since 4.7.0
+ *
+ * @param array $comment_data Array of arguments for inserting a comment.
+ * @return WP_Error|true WP_Error when a comment field exceeds the limit,
+ *                       otherwise true.
+ */
+function wp_check_comment_data_max_lengths( $comment_data ) {
+	$max_lengths = wp_get_comment_fields_max_lengths();
+
+	if ( isset( $comment_data['comment_author'] ) && mb_strlen( $comment_data['comment_author'], '8bit' ) > $max_lengths['comment_author'] ) {
+		return new WP_Error( 'comment_author_column_length', __( '<strong>ERROR</strong>: your name is too long.' ), 200 );
+	}
+
+	if ( isset( $comment_data['comment_author_email'] ) && strlen( $comment_data['comment_author_email'] ) > $max_lengths['comment_author_email'] ) {
+		return new WP_Error( 'comment_author_email_column_length', __( '<strong>ERROR</strong>: your email address is too long.' ), 200 );
+	}
+
+	if ( isset( $comment_data['comment_author_url'] ) && strlen( $comment_data['comment_author_url'] ) > $max_lengths['comment_author_url'] ) {
+		return new WP_Error( 'comment_author_url_column_length', __( '<strong>ERROR</strong>: your url is too long.' ), 200 );
+	}
+
+	if ( isset( $comment_data['comment_content'] ) && mb_strlen( $comment_data['comment_content'], '8bit' ) > $max_lengths['comment_content'] ) {
+		return new WP_Error( 'comment_content_column_length', __( '<strong>ERROR</strong>: your comment is too long.' ), 200 );
+	}
+
+	return true;
 }
 
 /**
@@ -2154,8 +2180,6 @@ function wp_update_comment($commentarr) {
 
 	$comment_ID = $data['comment_ID'];
 	$comment_post_ID = $data['comment_post_ID'];
-	$keys = array( 'comment_post_ID', 'comment_content', 'comment_author', 'comment_author_email', 'comment_approved', 'comment_karma', 'comment_author_url', 'comment_date', 'comment_date_gmt', 'comment_type', 'comment_parent', 'user_id', 'comment_agent', 'comment_author_IP' );
-	$data = wp_array_slice_assoc( $data, $keys );
 
 	/**
 	 * Filters the comment data immediately before it is updated in the database.
@@ -2169,6 +2193,9 @@ function wp_update_comment($commentarr) {
 	 * @param array $commentarr The new, raw comment data.
 	 */
 	$data = apply_filters( 'wp_update_comment_data', $data, $comment, $commentarr );
+
+	$keys = array( 'comment_post_ID', 'comment_content', 'comment_author', 'comment_author_email', 'comment_approved', 'comment_karma', 'comment_author_url', 'comment_date', 'comment_date_gmt', 'comment_type', 'comment_parent', 'user_id', 'comment_agent', 'comment_author_IP' );
+	$data = wp_array_slice_assoc( $data, $keys );
 
 	$rval = $wpdb->update( $wpdb->comments, $data, compact( 'comment_ID' ) );
 
@@ -2978,8 +3005,12 @@ function wp_handle_comment_submission( $comment_data ) {
 		 * @param int $comment_post_ID Post ID.
 		 */
 		do_action( 'comment_on_draft', $comment_post_ID );
-
-		return new WP_Error( 'comment_on_draft' );
+		
+		if ( current_user_can( 'read_post', $comment_post_ID ) ) {
+			return new WP_Error( 'comment_on_draft', __( 'Sorry, comments are not allowed for this item.' ), 403 );
+		} else {
+			return new WP_Error( 'comment_on_draft' );
+		}
 
 	} elseif ( post_password_required( $comment_post_ID ) ) {
 
@@ -3027,37 +3058,22 @@ function wp_handle_comment_submission( $comment_data ) {
 		}
 	} else {
 		if ( get_option( 'comment_registration' ) ) {
-			return new WP_Error( 'not_logged_in', __( 'Sorry, you must be logged in to post a comment.' ), 403 );
+			return new WP_Error( 'not_logged_in', __( 'Sorry, you must be logged in to comment.' ), 403 );
 		}
 	}
 
 	$comment_type = '';
-	$max_lengths = wp_get_comment_fields_max_lengths();
 
 	if ( get_option( 'require_name_email' ) && ! $user->exists() ) {
-		if ( 6 > strlen( $comment_author_email ) || '' == $comment_author ) {
+		if ( '' == $comment_author_email || '' == $comment_author ) {
 			return new WP_Error( 'require_name_email', __( '<strong>ERROR</strong>: please fill the required fields (name, email).' ), 200 );
 		} elseif ( ! is_email( $comment_author_email ) ) {
 			return new WP_Error( 'require_valid_email', __( '<strong>ERROR</strong>: please enter a valid email address.' ), 200 );
 		}
 	}
 
-	if ( isset( $comment_author ) && $max_lengths['comment_author'] < mb_strlen( $comment_author, '8bit' ) ) {
-		return new WP_Error( 'comment_author_column_length', __( '<strong>ERROR</strong>: your name is too long.' ), 200 );
-	}
-
-	if ( isset( $comment_author_email ) && $max_lengths['comment_author_email'] < strlen( $comment_author_email ) ) {
-		return new WP_Error( 'comment_author_email_column_length', __( '<strong>ERROR</strong>: your email address is too long.' ), 200 );
-	}
-
-	if ( isset( $comment_author_url ) && $max_lengths['comment_author_url'] < strlen( $comment_author_url ) ) {
-		return new WP_Error( 'comment_author_url_column_length', __( '<strong>ERROR</strong>: your url is too long.' ), 200 );
-	}
-
 	if ( '' == $comment_content ) {
 		return new WP_Error( 'require_valid_comment', __( '<strong>ERROR</strong>: please type a comment.' ), 200 );
-	} elseif ( $max_lengths['comment_content'] < mb_strlen( $comment_content, '8bit' ) ) {
-		return new WP_Error( 'comment_content_column_length', __( '<strong>ERROR</strong>: your comment is too long.' ), 200 );
 	}
 
 	$commentdata = compact(
@@ -3070,6 +3086,11 @@ function wp_handle_comment_submission( $comment_data ) {
 		'comment_parent',
 		'user_ID'
 	);
+
+	$check_max_lengths = wp_check_comment_data_max_lengths( $commentdata );
+	if ( is_wp_error( $check_max_lengths ) ) {
+		return $check_max_lengths;
+	}
 
 	$comment_id = wp_new_comment( wp_slash( $commentdata ), true );
 	if ( is_wp_error( $comment_id ) ) {

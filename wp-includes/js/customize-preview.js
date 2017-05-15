@@ -29,33 +29,34 @@
 		 * @returns {string} URL with customized state.
 		 */
 		injectUrlWithState = function( url ) {
-			var urlParser, queryParams;
+			var urlParser, oldQueryParams, newQueryParams;
 			urlParser = document.createElement( 'a' );
 			urlParser.href = url;
-			queryParams = api.utils.parseQueryString( urlParser.search.substr( 1 ) );
+			oldQueryParams = api.utils.parseQueryString( location.search.substr( 1 ) );
+			newQueryParams = api.utils.parseQueryString( urlParser.search.substr( 1 ) );
 
-			queryParams.customize_changeset_uuid = api.settings.changeset.uuid;
-			if ( ! api.settings.theme.active ) {
-				queryParams.customize_theme = api.settings.theme.stylesheet;
+			newQueryParams.customize_changeset_uuid = oldQueryParams.customize_changeset_uuid;
+			if ( oldQueryParams.customize_theme ) {
+				newQueryParams.customize_theme = oldQueryParams.customize_theme;
 			}
-			if ( api.settings.theme.channel ) {
-				queryParams.customize_messenger_channel = api.settings.channel;
+			if ( oldQueryParams.customize_messenger_channel ) {
+				newQueryParams.customize_messenger_channel = oldQueryParams.customize_messenger_channel;
 			}
-			urlParser.search = $.param( queryParams );
-			return url;
+			urlParser.search = $.param( newQueryParams );
+			return urlParser.href;
 		};
 
 		history.replaceState = ( function( nativeReplaceState ) {
 			return function historyReplaceState( data, title, url ) {
 				currentHistoryState = data;
-				return nativeReplaceState.call( history, data, title, injectUrlWithState( url ) );
+				return nativeReplaceState.call( history, data, title, 'string' === typeof url && url.length > 0 ? injectUrlWithState( url ) : url );
 			};
 		} )( history.replaceState );
 
 		history.pushState = ( function( nativePushState ) {
 			return function historyPushState( data, title, url ) {
 				currentHistoryState = data;
-				return nativePushState.call( history, data, title, injectUrlWithState( url ) );
+				return nativePushState.call( history, data, title, 'string' === typeof url && url.length > 0 ? injectUrlWithState( url ) : url );
 			};
 		} )( history.pushState );
 
@@ -105,18 +106,18 @@
 			preview.add( 'scheme', urlParser.protocol.replace( /:$/, '' ) );
 
 			preview.body = $( document.body );
-
-			preview.body.on( 'click.preview', 'a', function( event ) {
-				preview.handleLinkClick( event );
-			} );
-
-			preview.body.on( 'submit.preview', 'form', function( event ) {
-				preview.handleFormSubmit( event );
-			} );
-
 			preview.window = $( window );
 
 			if ( api.settings.channel ) {
+
+				// If in an iframe, then intercept the link clicks and form submissions.
+				preview.body.on( 'click.preview', 'a', function( event ) {
+					preview.handleLinkClick( event );
+				} );
+				preview.body.on( 'submit.preview', 'form', function( event ) {
+					preview.handleFormSubmit( event );
+				} );
+
 				preview.window.on( 'scroll.preview', debounce( function() {
 					preview.send( 'scroll', preview.window.scrollTop() );
 				}, 200 ) );
@@ -131,22 +132,22 @@
 		 * Handle link clicks in preview.
 		 *
 		 * @since 4.7.0
+		 * @access public
 		 *
 		 * @param {jQuery.Event} event Event.
 		 */
 		handleLinkClick: function( event ) {
 			var preview = this, link, isInternalJumpLink;
-			link = $( event.target );
+			link = $( event.target ).closest( 'a' );
 
 			// No-op if the anchor is not a link.
 			if ( _.isUndefined( link.attr( 'href' ) ) ) {
 				return;
 			}
 
+			// Allow internal jump links and JS links to behave normally without preventing default.
 			isInternalJumpLink = ( '#' === link.attr( 'href' ).substr( 0, 1 ) );
-
-			// Allow internal jump links to behave normally without preventing default.
-			if ( isInternalJumpLink ) {
+			if ( isInternalJumpLink || ! /^https?:$/.test( link.prop( 'protocol' ) ) ) {
 				return;
 			}
 
@@ -154,11 +155,6 @@
 			if ( ! api.isLinkPreviewable( link[0] ) ) {
 				wp.a11y.speak( api.settings.l10n.linkUnpreviewable );
 				event.preventDefault();
-				return;
-			}
-
-			// If not in an iframe, then allow the link click to proceed normally since the state query params are added.
-			if ( ! api.settings.channel ) {
 				return;
 			}
 
@@ -182,6 +178,7 @@
 		 * Handle form submit.
 		 *
 		 * @since 4.7.0
+		 * @access public
 		 *
 		 * @param {jQuery.Event} event Event.
 		 */
@@ -195,11 +192,6 @@
 			if ( 'GET' !== form.prop( 'method' ).toUpperCase() || ! api.isLinkPreviewable( urlParser ) ) {
 				wp.a11y.speak( api.settings.l10n.formUnpreviewable );
 				event.preventDefault();
-				return;
-			}
-
-			// If not in an iframe, then allow the form submission to proceed normally with the state inputs injected.
-			if ( ! api.settings.channel ) {
 				return;
 			}
 
@@ -281,7 +273,7 @@
 	 * @returns {boolean} Is appropriate for changeset link.
 	 */
 	api.isLinkPreviewable = function isLinkPreviewable( element, options ) {
-		var matchesAllowedUrl, parsedAllowedUrl, args;
+		var matchesAllowedUrl, parsedAllowedUrl, args, elementHost;
 
 		args = _.extend( {}, { allowAdminAjax: false }, options || {} );
 
@@ -294,10 +286,11 @@
 			return false;
 		}
 
+		elementHost = element.host.replace( /:(80|443)$/, '' );
 		parsedAllowedUrl = document.createElement( 'a' );
 		matchesAllowedUrl = ! _.isUndefined( _.find( api.settings.url.allowed, function( allowedUrl ) {
 			parsedAllowedUrl.href = allowedUrl;
-			return parsedAllowedUrl.protocol === element.protocol && parsedAllowedUrl.host === element.host && 0 === element.pathname.indexOf( parsedAllowedUrl.pathname.replace( /\/$/, '' ) );
+			return parsedAllowedUrl.protocol === element.protocol && parsedAllowedUrl.host.replace( /:(80|443)$/, '' ) === elementHost && 0 === element.pathname.indexOf( parsedAllowedUrl.pathname.replace( /\/$/, '' ) );
 		} ) );
 		if ( ! matchesAllowedUrl ) {
 			return false;
@@ -341,18 +334,22 @@
 			return;
 		}
 
-		// Ignore links with href="#" or href="#id".
-		if ( '#' === $( element ).attr( 'href' ).substr( 0, 1 ) ) {
+		// Ignore links with href="#", href="#id", or non-HTTP protocols (e.g. javascript: and mailto:).
+		if ( '#' === $( element ).attr( 'href' ).substr( 0, 1 ) || ! /^https?:$/.test( element.protocol ) ) {
 			return;
 		}
 
 		// Make sure links in preview use HTTPS if parent frame uses HTTPS.
-		if ( 'https' === api.preview.scheme.get() && 'http:' === element.protocol && -1 !== api.settings.url.allowedHosts.indexOf( element.host ) ) {
+		if ( api.settings.channel && 'https' === api.preview.scheme.get() && 'http:' === element.protocol && -1 !== api.settings.url.allowedHosts.indexOf( element.host ) ) {
 			element.protocol = 'https:';
 		}
 
 		if ( ! api.isLinkPreviewable( element ) ) {
-			$( element ).addClass( 'customize-unpreviewable' );
+
+			// Style link as unpreviewable only if previewing in iframe; if previewing on frontend, links will be allowed to work normally.
+			if ( api.settings.channel ) {
+				$( element ).addClass( 'customize-unpreviewable' );
+			}
 			return;
 		}
 		$( element ).removeClass( 'customize-unpreviewable' );
@@ -495,13 +492,17 @@
 		urlParser.href = form.action;
 
 		// Make sure forms in preview use HTTPS if parent frame uses HTTPS.
-		if ( 'https' === api.preview.scheme.get() && 'http:' === urlParser.protocol && -1 !== api.settings.url.allowedHosts.indexOf( urlParser.host ) ) {
+		if ( api.settings.channel && 'https' === api.preview.scheme.get() && 'http:' === urlParser.protocol && -1 !== api.settings.url.allowedHosts.indexOf( urlParser.host ) ) {
 			urlParser.protocol = 'https:';
 			form.action = urlParser.href;
 		}
 
 		if ( 'GET' !== form.method.toUpperCase() || ! api.isLinkPreviewable( urlParser ) ) {
-			$( form ).addClass( 'customize-unpreviewable' );
+
+			// Style form as unpreviewable only if previewing in iframe; if previewing on frontend, all forms will be allowed to work normally.
+			if ( api.settings.channel ) {
+				$( form ).addClass( 'customize-unpreviewable' );
+			}
 			return;
 		}
 		$( form ).removeClass( 'customize-unpreviewable' );
@@ -593,6 +594,63 @@
 		};
 	} )();
 
+	api.settingPreviewHandlers = {
+
+		/**
+		 * Preview changes to custom logo.
+		 *
+		 * @param {number} attachmentId Attachment ID for custom logo.
+		 * @returns {void}
+		 */
+		custom_logo: function( attachmentId ) {
+			$( 'body' ).toggleClass( 'wp-custom-logo', !! attachmentId );
+		},
+
+		/**
+		 * Preview changes to custom css.
+		 *
+		 * @param {string} value Custom CSS..
+		 * @returns {void}
+		 */
+		custom_css: function( value ) {
+			$( '#wp-custom-css' ).text( value );
+		},
+
+		/**
+		 * Preview changes to any of the background settings.
+		 *
+		 * @returns {void}
+		 */
+		background: function() {
+			var css = '', settings = {};
+
+			_.each( ['color', 'image', 'preset', 'position_x', 'position_y', 'size', 'repeat', 'attachment'], function( prop ) {
+				settings[ prop ] = api( 'background_' + prop );
+			} );
+
+			/*
+			 * The body will support custom backgrounds if either the color or image are set.
+			 *
+			 * See get_body_class() in /wp-includes/post-template.php
+			 */
+			$( document.body ).toggleClass( 'custom-background', !! ( settings.color() || settings.image() ) );
+
+			if ( settings.color() ) {
+				css += 'background-color: ' + settings.color() + ';';
+			}
+
+			if ( settings.image() ) {
+				css += 'background-image: url("' + settings.image() + '");';
+				css += 'background-size: ' + settings.size() + ';';
+				css += 'background-position: ' + settings.position_x() + ' ' + settings.position_y() + ';';
+				css += 'background-repeat: ' + settings.repeat() + ';';
+				css += 'background-attachment: ' + settings.attachment() + ';';
+			}
+
+			$( '#custom-background-css' ).text( 'body.custom-background { ' + css + ' }' );
+		}
+	};
+
 	$( function() {
 		var bg, setValue;
 
@@ -653,6 +711,25 @@
 		});
 
 		api.preview.bind( 'sync', function( events ) {
+
+			/*
+			 * Delete any settings that already exist locally which haven't been
+			 * modified in the controls while the preview was loading. This prevents
+			 * situations where the JS value being synced from the pane may differ
+			 * from the PHP-sanitized JS value in the preview which causes the
+			 * non-sanitized JS value to clobber the PHP-sanitized value. This
+			 * is particularly important for selective refresh partials that
+			 * have a fallback refresh behavior since infinite refreshing would
+			 * result.
+			 */
+			if ( events.settings && events['settings-modified-while-loading'] ) {
+				_.each( _.keys( events.settings ), function( syncedSettingId ) {
+					if ( api.has( syncedSettingId ) && ! events['settings-modified-while-loading'][ syncedSettingId ] ) {
+						delete events.settings[ syncedSettingId ];
+					}
+				} );
+			}
+
 			$.each( events, function( event, args ) {
 				api.preview.trigger( event, args );
 			});
@@ -739,39 +816,9 @@
 			return 'background_' + prop;
 		} );
 
-		api.when.apply( api, bg ).done( function( color, image, preset, positionX, positionY, size, repeat, attachment ) {
-			var body = $(document.body),
-				head = $('head'),
-				style = $('#custom-background-css'),
-				update;
-
-			update = function() {
-				var css = '';
-
-				// The body will support custom backgrounds if either
-				// the color or image are set.
-				//
-				// See get_body_class() in /wp-includes/post-template.php
-				body.toggleClass( 'custom-background', !! ( color() || image() ) );
-
-				if ( color() )
-					css += 'background-color: ' + color() + ';';
-
-				if ( image() ) {
-					css += 'background-image: url("' + image() + '");';
-					css += 'background-size: ' + size() + ';';
-					css += 'background-position: ' + positionX() + ' ' + positionY() + ';';
-					css += 'background-repeat: ' + repeat() + ';';
-					css += 'background-attachment: ' + attachment() + ';';
-				}
-
-				// Refresh the stylesheet by removing and recreating it.
-				style.remove();
-				style = $('<style type="text/css" id="custom-background-css">body.custom-background { ' + css + ' }</style>').appendTo( head );
-			};
-
+		api.when.apply( api, bg ).done( function() {
 			$.each( arguments, function() {
-				this.bind( update );
+				this.bind( api.settingPreviewHandlers.background );
 			});
 		});
 
@@ -782,17 +829,13 @@
 		 *
 		 * @since 4.5.0
 		 */
-		api( 'custom_logo', function( setting ) {
-			$( 'body' ).toggleClass( 'wp-custom-logo', !! setting.get() );
-			setting.bind( function( attachmentId ) {
-				$( 'body' ).toggleClass( 'wp-custom-logo', !! attachmentId );
-			});
-		});
+		api( 'custom_logo', function ( setting ) {
+			api.settingPreviewHandlers.custom_logo.call( setting, setting.get() );
+			setting.bind( api.settingPreviewHandlers.custom_logo );
+		} );
 
-		api( 'custom_css[' + api.settings.theme.stylesheet + ']', function( value ) {
-			value.bind( function( to ) {
-				$( '#wp-custom-css' ).text( to );
-			} );
+		api( 'custom_css[' + api.settings.theme.stylesheet + ']', function( setting ) {
+			setting.bind( api.settingPreviewHandlers.custom_css );
 		} );
 
 		api.trigger( 'preview-ready' );

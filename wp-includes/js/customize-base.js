@@ -165,7 +165,7 @@ window.wp = window.wp || {};
 	/**
 	 * Observable values that support two-way binding.
 	 *
-	 * @constuctor
+	 * @constructor
 	 */
 	api.Value = api.Class.extend({
 		/**
@@ -304,7 +304,7 @@ window.wp = window.wp || {};
 	/**
 	 * A collection of observable values.
 	 *
-	 * @constuctor
+	 * @constructor
 	 * @augments wp.customize.Class
 	 * @mixes wp.customize.Events
 	 */
@@ -520,7 +520,7 @@ window.wp = window.wp || {};
 	 *
 	 * Handles inputs, selects, and textareas by default.
 	 *
-	 * @constuctor
+	 * @constructor
 	 * @augments wp.customize.Value
 	 * @augments wp.customize.Class
 	 */
@@ -617,7 +617,7 @@ window.wp = window.wp || {};
 	/**
 	 * A communicator for sending data from one window to another over postMessage.
 	 *
-	 * @constuctor
+	 * @constructor
 	 * @augments wp.customize.Class
 	 * @mixes wp.customize.Events
 	 */
@@ -655,7 +655,7 @@ window.wp = window.wp || {};
 				var urlParser = document.createElement( 'a' );
 				urlParser.href = to;
 				// Port stripping needed by IE since it adds to host but not to event.origin.
-				return urlParser.protocol + '//' + urlParser.host.replace( /:80$/, '' );
+				return urlParser.protocol + '//' + urlParser.host.replace( /:(80|443)$/, '' );
 			});
 
 			// first add with no value

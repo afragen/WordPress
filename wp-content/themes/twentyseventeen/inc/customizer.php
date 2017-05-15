@@ -16,8 +16,6 @@ function twentyseventeen_customize_register( $wp_customize ) {
 	$wp_customize->get_setting( 'blogname' )->transport          = 'postMessage';
 	$wp_customize->get_setting( 'blogdescription' )->transport   = 'postMessage';
 	$wp_customize->get_setting( 'header_textcolor' )->transport  = 'postMessage';
-	$wp_customize->get_setting( 'header_image' )->transport      = 'postMessage';
-	$wp_customize->get_setting( 'header_image_data' )->transport = 'postMessage';
 
 	$wp_customize->selective_refresh->add_partial( 'blogname', array(
 		'selector' => '.site-title a',
@@ -79,12 +77,12 @@ function twentyseventeen_customize_register( $wp_customize ) {
 		'label'       => __( 'Page Layout', 'twentyseventeen' ),
 		'section'     => 'theme_options',
 		'type'        => 'radio',
-		'description' => __( 'When no sidebar widgets are assigned, you can opt to display all pages with a one column or two column layout. When the two column layout is assigned, the page title is in one column and content is in the other.', 'twentyseventeen' ),
+		'description' => __( 'When the two-column layout is assigned, the page title is in one column and content is in the other.', 'twentyseventeen' ),
 		'choices'     => array(
 			'one-column' => __( 'One Column', 'twentyseventeen' ),
 			'two-column' => __( 'Two Column', 'twentyseventeen' ),
 		),
-		'active_callback' => 'twentyseventeen_is_page_without_sidebar',
+		'active_callback' => 'twentyseventeen_is_view_with_layout_option',
 	) );
 
 	/**
@@ -92,7 +90,7 @@ function twentyseventeen_customize_register( $wp_customize ) {
 	 *
 	 * @since Twenty Seventeen 1.0
 	 *
-	 * @param $num_sections integer
+	 * @param int $num_sections Number of front page sections.
 	 */
 	$num_sections = apply_filters( 'twentyseventeen_front_page_sections', 4 );
 
@@ -125,6 +123,8 @@ add_action( 'customize_register', 'twentyseventeen_customize_register' );
 
 /**
  * Sanitize the page layout options.
+ *
+ * @param string $input Page layout.
  */
 function twentyseventeen_sanitize_page_layout( $input ) {
 	$valid = array(
@@ -141,11 +141,13 @@ function twentyseventeen_sanitize_page_layout( $input ) {
 
 /**
  * Sanitize the colorscheme.
+ *
+ * @param string $input Color scheme.
  */
 function twentyseventeen_sanitize_colorscheme( $input ) {
 	$valid = array( 'light', 'dark', 'custom' );
 
-	if ( in_array( $input, $valid ) ) {
+	if ( in_array( $input, $valid, true ) ) {
 		return $input;
 	}
 
@@ -184,10 +186,11 @@ function twentyseventeen_is_static_front_page() {
 }
 
 /**
- * Return whether we're previewing a page and there are no widgets in the sidebar.
+ * Return whether we're on a view that supports a one or two column layout.
  */
-function twentyseventeen_is_page_without_sidebar() {
-	return ( is_page() && ! is_active_sidebar( 'sidebar-1' ) );
+function twentyseventeen_is_view_with_layout_option() {
+	// This option is available on all pages. It's also available on archives when there isn't a sidebar.
+	return ( is_page() || ( is_archive() && ! is_active_sidebar( 'sidebar-1' ) ) );
 }
 
 /**

@@ -244,6 +244,7 @@ td {
 	line-height: inherit;
 }
 
+/* Any change to the default link style must be applied to button-link too. */
 a {
 	color: #0073aa;
 	-webkit-transition-property: border, background, color;
@@ -464,7 +465,8 @@ code {
 	word-wrap: break-word;
 }
 
-.widefat a {
+.widefat a,
+.widefat button.button-link {
 	text-decoration: none;
 }
 
@@ -777,7 +779,7 @@ img.emoji {
 #bulk-titles div a:before,
 .notice-dismiss:before {
 	background: none;
-	color: #b4b9be;
+	color: #72777c;
 	content: "\f153";
 	display: block;
 	font: normal 16px/20px dashicons;
@@ -863,8 +865,6 @@ hr {
 	border-bottom: 1px solid #fafafa;
 }
 
-.widget-control-remove,
-.widget-control-remove:focus,
 .row-actions span.delete a,
 .row-actions span.trash a,
 .row-actions span.spam a,
@@ -874,7 +874,8 @@ hr {
 .submitbox .submitdelete,
 #media-items a.delete,
 #media-items a.delete-permanently,
-#nav-menu-footer .menu-delete {
+#nav-menu-footer .menu-delete,
+#delete-link a.delete  {
 	color: #a00;
 }
 
@@ -890,13 +891,10 @@ span.required,
 .submitbox .submitdelete:hover,
 #media-items a.delete:hover,
 #media-items a.delete-permanently:hover,
-#nav-menu-footer .menu-delete:hover {
-	color: #f00;
+#nav-menu-footer .menu-delete:hover,
+#delete-link a.delete:hover {
+	color: #dc3232;
 	border: none;
-}
-
-.widget-control-remove:hover {
-	color: #f00;
 }
 
 /*------------------------------------------------------------------------------
@@ -913,6 +911,17 @@ span.required,
 #delete-action {
 	float: left;
 	line-height: 28px;
+}
+
+#delete-link {
+	line-height: 28px;
+	vertical-align: middle;
+	text-align: left;
+	margin-left: 8px;
+}
+
+#delete-link a {
+	text-decoration: none;
 }
 
 #publishing-action {
@@ -1242,18 +1251,8 @@ th.action-links {
 }
 
 .wp-filter .button-link.edit-filters {
-	color: #0073aa;
-	text-decoration: underline;
 	padding: 0 5px;
 	line-height: 28px;
-}
-
-.wp-filter .button-link.edit-filters:hover {
-	color: #00a0d2;
-}
-
-.wp-filter .button-link.edit-filters:focus {
-	color: #124964;
 }
 
 .filtered-by {
@@ -1431,7 +1430,7 @@ div.error p,
 	margin: 0;
 	padding: 9px;
 	background: none;
-	color: #b4b9be;
+	color: #72777c;
 	cursor: pointer;
 }
 
@@ -1607,23 +1606,13 @@ form.upgrade .hint {
 	color: #66c6e4;
 }
 
-.button.updated-message,
-.notice .button-link {
+.button.updated-message {
 	-webkit-transition-property: border, background, color;
 	transition-property: border, background, color;
 	-webkit-transition-duration: .05s;
 	transition-duration: .05s;
 	-webkit-transition-timing-function: ease-in-out;
 	transition-timing-function: ease-in-out;
-}
-
-.notice .button-link {
-	color: #0073aa;
-}
-
-.notice .button-link:hover,
-.notice .button-link:active {
-	color: #00a0d2;
 }
 
 @media aural {
@@ -2064,7 +2053,11 @@ html.wp-toolbar {
 	float: right;
 	width: 36px;
 	height: 36px;
+	margin: 0;
 	padding: 0;
+	border: 0;
+	background: none;
+	cursor: pointer;
 }
 
 .js .postbox .handlediv {
@@ -2837,6 +2830,14 @@ div.action-links {
 	border: 1px solid #ccc;
 }
 
+#plugin-information blockquote {
+	border-left: 2px solid #ddd;
+	color: #666;
+	font-style: italic;
+	margin: 1em 0;
+	padding: 0 0 0 1em;
+}
+
 /* rtl:ignore */
 #plugin-information .review {
 	overflow: hidden; /* clearfix */
@@ -3178,7 +3179,9 @@ img {
 	font-size: 13px;
 	width: 97%;
 	background: #f9f9f9;
-	outline: none;
+	-moz-tab-size: 4;
+	-o-tab-size: 4;
+	tab-size: 4;
 }
 
 /* rtl:ignore */
@@ -3256,26 +3259,26 @@ img {
 
 /* @todo: can we use a common class for these? */
 .nav-menus-php .item-edit:before,
-.widget-top a.widget-action:after,
+.widget-top .widget-action .toggle-indicator:before,
 .control-section .accordion-section-title:after,
 .accordion-section-title:after {
-	right: 0;
 	content: "\f140";
-	border: none;
-	background: none;
 	font: normal 20px/1 dashicons;
 	speak: none;
 	display: block;
-	padding: 0;
-	text-indent: 0;
-	text-align: center;
-	position: relative;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 	text-decoration: none !important;
 }
 
+.widget-top .widget-action .toggle-indicator:before {
+	padding: 1px 2px 1px 0px;
+	-webkit-border-radius: 50%;
+	border-radius: 50%;
+}
+
 .handlediv,
+.postbox .handlediv.button-link,
 .item-edit,
 .sidebar-name-arrow,
 .accordion-section-title:after {
@@ -3290,6 +3293,8 @@ img {
 .widget-action:focus,
 .handlediv:hover,
 .handlediv:focus,
+.postbox .handlediv.button-link:hover,
+.postbox .handlediv.button-link:focus,
 .item-edit:hover,
 .item-edit:focus,
 .sidebar-name:hover .sidebar-name-arrow,
@@ -3297,15 +3302,7 @@ img {
 	color: #23282d;
 }
 
-.widget-top a.widget-action:after {
-	padding: 1px 2px 1px 0px;
-	margin-top: 10px;
-	margin-right: 10px;
-	-webkit-border-radius: 50%;
-	border-radius: 50%;
-}
-
-.widget-top a.widget-action:focus:after {
+.widget-top .widget-action:focus .toggle-indicator:before {
 	-webkit-box-shadow:
 		0 0 0 1px #5b9dd9,
 		0 0 2px 1px rgba(30,140,190,.8);
@@ -3324,7 +3321,7 @@ img {
 .control-section.open .accordion-section-title:after,
 #customize-info.open .accordion-section-title:after,
 .nav-menus-php .menu-item-edit-active .item-edit:before,
-.widget.open .widget-top a.widget-action:after {
+.widget.open .widget-top .widget-action .toggle-indicator:before {
 	content: "\f142";
 }
 
@@ -3603,8 +3600,8 @@ img {
 	/* @todo: evaluate - most of these were likely replaced by dashicons */
 	.curtime #timestamp,
 	#screen-meta-links a.show-settings,
-	.widget-top a.widget-action,
-	.widget-top a.widget-action:hover,
+	.widget-top .widget-action,
+	.widget-top .widget-action:hover,
 	.sidebar-name-arrow,
 	.sidebar-name:hover .sidebar-name-arrow,
 	.meta-box-sortables .postbox:hover .handlediv,

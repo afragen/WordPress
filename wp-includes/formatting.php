@@ -506,6 +506,12 @@ function wpautop( $pee, $br = true ) {
 		$pee = preg_replace( '%\s*(<(?:source|track)[^>]*>)\s*%', '$1', $pee );
 	}
 
+	// Collapse line breaks before and after <figcaption> elements.
+	if ( strpos( $pee, '<figcaption' ) !== false ) {
+		$pee = preg_replace( '|\s*(<figcaption[^>]*>)|', '$1', $pee );
+		$pee = preg_replace( '|</figcaption>\s*|', '</figcaption>', $pee );
+	}
+
 	// Remove more than two contiguous line breaks.
 	$pee = preg_replace("/\n\n+/", "\n\n", $pee);
 
@@ -1490,7 +1496,7 @@ function utf8_uri_encode( $utf8_string, $length = 0 ) {
  * | -------- | ----- | ----------- | --------------------------------------- |
  * | U+00B7   | l·l   | ll          | Flown dot (between two Ls)              |
  *
- * Serbian (`sr_RS`) locale:
+ * Serbian (`sr_RS`) and Bosnian (`bs_BA`) locales:
  *
  * |   Code   | Glyph | Replacement |               Description               |
  * | -------- | ----- | ----------- | --------------------------------------- |
@@ -1500,6 +1506,7 @@ function utf8_uri_encode( $utf8_string, $length = 0 ) {
  * @since 1.2.1
  * @since 4.6.0 Added locale support for `de_CH`, `de_CH_informal`, and `ca`.
  * @since 4.7.0 Added locale support for `sr_RS`.
+ * @since 4.8.0 Added locale support for `bs_BA`.
  *
  * @param string $string Text that might have accent characters
  * @return string Filtered string with replaced "nice" characters.
@@ -1705,7 +1712,7 @@ function remove_accents( $string ) {
 			$chars[ 'å' ] = 'aa';
 		} elseif ( 'ca' === $locale ) {
 			$chars[ 'l·l' ] = 'll';
-		} elseif ( 'sr_RS' === $locale ) {
+		} elseif ( 'sr_RS' === $locale || 'bs_BA' === $locale ) {
 			$chars[ 'Đ' ] = 'DJ';
 			$chars[ 'đ' ] = 'dj';
 		}
@@ -2865,7 +2872,7 @@ function is_email( $email, $deprecated = false ) {
 		_deprecated_argument( __FUNCTION__, '3.0.0' );
 
 	// Test for the minimum length the email can be
-	if ( strlen( $email ) < 3 ) {
+	if ( strlen( $email ) < 6 ) {
 		/**
 		 * Filters whether an email address is valid.
 		 *
@@ -3102,7 +3109,7 @@ function iso8601_to_datetime( $date_string, $timezone = 'user' ) {
  */
 function sanitize_email( $email ) {
 	// Test for the minimum length the email can be
-	if ( strlen( $email ) < 3 ) {
+	if ( strlen( $email ) < 6 ) {
 		/**
 		 * Filters a sanitized email address.
 		 *
@@ -3217,32 +3224,37 @@ function human_time_diff( $from, $to = '' ) {
 		$mins = round( $diff / MINUTE_IN_SECONDS );
 		if ( $mins <= 1 )
 			$mins = 1;
-		/* translators: min=minute */
+		/* translators: Time difference between two dates, in minutes (min=minute). 1: Number of minutes */
 		$since = sprintf( _n( '%s min', '%s mins', $mins ), $mins );
 	} elseif ( $diff < DAY_IN_SECONDS && $diff >= HOUR_IN_SECONDS ) {
 		$hours = round( $diff / HOUR_IN_SECONDS );
 		if ( $hours <= 1 )
 			$hours = 1;
+		/* translators: Time difference between two dates, in hours. 1: Number of hours */
 		$since = sprintf( _n( '%s hour', '%s hours', $hours ), $hours );
 	} elseif ( $diff < WEEK_IN_SECONDS && $diff >= DAY_IN_SECONDS ) {
 		$days = round( $diff / DAY_IN_SECONDS );
 		if ( $days <= 1 )
 			$days = 1;
+		/* translators: Time difference between two dates, in days. 1: Number of days */
 		$since = sprintf( _n( '%s day', '%s days', $days ), $days );
 	} elseif ( $diff < MONTH_IN_SECONDS && $diff >= WEEK_IN_SECONDS ) {
 		$weeks = round( $diff / WEEK_IN_SECONDS );
 		if ( $weeks <= 1 )
 			$weeks = 1;
+		/* translators: Time difference between two dates, in weeks. 1: Number of weeks */
 		$since = sprintf( _n( '%s week', '%s weeks', $weeks ), $weeks );
 	} elseif ( $diff < YEAR_IN_SECONDS && $diff >= MONTH_IN_SECONDS ) {
 		$months = round( $diff / MONTH_IN_SECONDS );
 		if ( $months <= 1 )
 			$months = 1;
+		/* translators: Time difference between two dates, in months. 1: Number of months */
 		$since = sprintf( _n( '%s month', '%s months', $months ), $months );
 	} elseif ( $diff >= YEAR_IN_SECONDS ) {
 		$years = round( $diff / YEAR_IN_SECONDS );
 		if ( $years <= 1 )
 			$years = 1;
+		/* translators: Time difference between two dates, in years. 1: Number of years */
 		$since = sprintf( _n( '%s year', '%s years', $years ), $years );
 	}
 
@@ -3365,7 +3377,7 @@ function wp_trim_words( $text, $num_words = 55, $more = null ) {
 	 * @since 3.3.0
 	 *
 	 * @param string $text          The trimmed text.
-	 * @param int    $num_words     The number of words to trim the text to. Default 5.
+	 * @param int    $num_words     The number of words to trim the text to. Default 55.
 	 * @param string $more          An optional string to append to the end of the trimmed text, e.g. &hellip;.
 	 * @param string $original_text The text before it was trimmed.
 	 */
@@ -5000,7 +5012,7 @@ function _print_emoji_detection_script() {
 		 *
 		 * @param string The emoji base URL for png images.
 		 */
-		'baseUrl' => apply_filters( 'emoji_url', 'https://s.w.org/images/core/emoji/2.2.1/72x72/' ),
+		'baseUrl' => apply_filters( 'emoji_url', 'https://s.w.org/images/core/emoji/2.2.5/72x72/' ),
 
 		/**
 		 * Filters the extension of the emoji png files.
@@ -5018,7 +5030,7 @@ function _print_emoji_detection_script() {
 		 *
 		 * @param string The emoji base URL for svg images.
 		 */
-		'svgUrl' => apply_filters( 'emoji_svg_url', 'https://s.w.org/images/core/emoji/2.2.1/svg/' ),
+		'svgUrl' => apply_filters( 'emoji_svg_url', 'https://s.w.org/images/core/emoji/2.2.5/svg/' ),
 
 		/**
 		 * Filters the extension of the emoji SVG files.
@@ -5065,7 +5077,7 @@ function _print_emoji_detection_script() {
 		?>
 		<script type="text/javascript">
 			window._wpemojiSettings = <?php echo wp_json_encode( $settings ); ?>;
-			!function(a,b,c){function d(a){var b,c,d,e,f=String.fromCharCode;if(!k||!k.fillText)return!1;switch(k.clearRect(0,0,j.width,j.height),k.textBaseline="top",k.font="600 32px Arial",a){case"flag":return k.fillText(f(55356,56826,55356,56819),0,0),j.toDataURL().length<3e3?!1:(k.clearRect(0,0,j.width,j.height),k.fillText(f(55356,57331,65039,8205,55356,57096),0,0),b=j.toDataURL(),k.clearRect(0,0,j.width,j.height),k.fillText(f(55356,57331,55356,57096),0,0),c=j.toDataURL(),b!==c);case"emoji4":return k.fillText(f(55357,56425,55356,57341,8205,55357,56507),0,0),d=j.toDataURL(),k.clearRect(0,0,j.width,j.height),k.fillText(f(55357,56425,55356,57341,55357,56507),0,0),e=j.toDataURL(),d!==e}return!1}function e(a){var c=b.createElement("script");c.src=a,c.defer=c.type="text/javascript",b.getElementsByTagName("head")[0].appendChild(c)}var f,g,h,i,j=b.createElement("canvas"),k=j.getContext&&j.getContext("2d");for(i=Array("flag","emoji4"),c.supports={everything:!0,everythingExceptFlag:!0},h=0;h<i.length;h++)c.supports[i[h]]=d(i[h]),c.supports.everything=c.supports.everything&&c.supports[i[h]],"flag"!==i[h]&&(c.supports.everythingExceptFlag=c.supports.everythingExceptFlag&&c.supports[i[h]]);c.supports.everythingExceptFlag=c.supports.everythingExceptFlag&&!c.supports.flag,c.DOMReady=!1,c.readyCallback=function(){c.DOMReady=!0},c.supports.everything||(g=function(){c.readyCallback()},b.addEventListener?(b.addEventListener("DOMContentLoaded",g,!1),a.addEventListener("load",g,!1)):(a.attachEvent("onload",g),b.attachEvent("onreadystatechange",function(){"complete"===b.readyState&&c.readyCallback()})),f=c.source||{},f.concatemoji?e(f.concatemoji):f.wpemoji&&f.twemoji&&(e(f.twemoji),e(f.wpemoji)))}(window,document,window._wpemojiSettings);
+			!function(a,b,c){function d(a){var b,c,d,e,f=String.fromCharCode;if(!k||!k.fillText)return!1;switch(k.clearRect(0,0,j.width,j.height),k.textBaseline="top",k.font="600 32px Arial",a){case"flag":return k.fillText(f(55356,56826,55356,56819),0,0),b=j.toDataURL(),k.clearRect(0,0,j.width,j.height),k.fillText(f(55356,57331,8203,55356,57096),0,0),c=j.toDataURL(),b===c&&(k.clearRect(0,0,j.width,j.height),k.fillText(f(55356,57331,65039,8205,55356,57096),0,0),b=j.toDataURL(),k.clearRect(0,0,j.width,j.height),k.fillText(f(55356,57331,55356,57096),0,0),c=j.toDataURL(),b!==c);case"emoji4":return k.fillText(f(55358,56631,55356,57339,8205,9794,65039),0,0),d=j.toDataURL(),k.clearRect(0,0,j.width,j.height),k.fillText(f(55358,56631,55356,57339,9794,65039),0,0),e=j.toDataURL(),d===e&&(k.clearRect(0,0,j.width,j.height),k.fillText(f(55357,56425,55356,57341,8205,55357,56507),0,0),d=j.toDataURL(),k.clearRect(0,0,j.width,j.height),k.fillText(f(55357,56425,55356,57341,55357,56507),0,0),e=j.toDataURL(),d!==e)}return!1}function e(a){var c=b.createElement("script");c.src=a,c.defer=c.type="text/javascript",b.getElementsByTagName("head")[0].appendChild(c)}var f,g,h,i,j=b.createElement("canvas"),k=j.getContext&&j.getContext("2d");for(i=Array("flag","emoji4"),c.supports={everything:!0,everythingExceptFlag:!0},h=0;h<i.length;h++)c.supports[i[h]]=d(i[h]),c.supports.everything=c.supports.everything&&c.supports[i[h]],"flag"!==i[h]&&(c.supports.everythingExceptFlag=c.supports.everythingExceptFlag&&c.supports[i[h]]);c.supports.everythingExceptFlag=c.supports.everythingExceptFlag&&!c.supports.flag,c.DOMReady=!1,c.readyCallback=function(){c.DOMReady=!0},c.supports.everything||(g=function(){c.readyCallback()},b.addEventListener?(b.addEventListener("DOMContentLoaded",g,!1),a.addEventListener("load",g,!1)):(a.attachEvent("onload",g),b.attachEvent("onreadystatechange",function(){"complete"===b.readyState&&c.readyCallback()})),f=c.source||{},f.concatemoji?e(f.concatemoji):f.wpemoji&&f.twemoji&&(e(f.twemoji),e(f.wpemoji)))}(window,document,window._wpemojiSettings);
 		</script>
 		<?php
 	}
@@ -5130,7 +5142,7 @@ function wp_staticize_emoji( $text ) {
 	$text = wp_encode_emoji( $text );
 
 	/** This filter is documented in wp-includes/formatting.php */
-	$cdn_url = apply_filters( 'emoji_url', 'https://s.w.org/images/core/emoji/2.2.1/72x72/' );
+	$cdn_url = apply_filters( 'emoji_url', 'https://s.w.org/images/core/emoji/2.2.5/72x72/' );
 
 	/** This filter is documented in wp-includes/formatting.php */
 	$ext = apply_filters( 'emoji_ext', '.png' );

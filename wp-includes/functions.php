@@ -1213,18 +1213,6 @@ function bool_from_yn( $yn ) {
 function do_feed() {
 	global $wp_query;
 
-	// Determine if we are looking at the main comment feed
-	$is_main_comments_feed = ( $wp_query->is_comment_feed() && ! $wp_query->is_singular() );
-
-	/*
-	 * Check the queried object for the existence of posts if it is not a feed for an archive,
-	 * search result, or main comments. By checking for the absense of posts we can prevent rendering the feed
-	 * templates at invalid endpoints. e.g.) /wp-content/plugins/feed/
-	 */
-	if ( ! $wp_query->have_posts() && ! ( $wp_query->is_archive() || $wp_query->is_search() || $is_main_comments_feed ) ) {
-		wp_die( __( 'ERROR: This is not a valid feed.' ), '', array( 'response' => 404 ) );
-	}
-
 	$feed = get_query_var( 'feed' );
 
 	// Remove the pad, if present.
@@ -1921,6 +1909,7 @@ function wp_upload_dir( $time = null, $create_dir = true, $refresh_cache = false
 /**
  * A non-filtered, non-cached version of wp_upload_dir() that doesn't check the path.
  *
+ * @since 4.5.0
  * @access private
  *
  * @param string $time Optional. Time formatted in 'yyyy/mm'. Default null.
@@ -2074,7 +2063,7 @@ function wp_unique_filename( $dir, $filename, $unique_filename_callback = null )
 
 			// Check for both lower and upper case extension or image sub-sizes may be overwritten.
 			while ( file_exists($dir . "/$filename") || file_exists($dir . "/$filename2") ) {
-				$new_number = $number + 1;
+				$new_number = (int) $number + 1;
 				$filename = str_replace( array( "-$number$ext", "$number$ext" ), "-$new_number$ext", $filename );
 				$filename2 = str_replace( array( "-$number$ext2", "$number$ext2" ), "-$new_number$ext2", $filename2 );
 				$number = $new_number;
@@ -2094,11 +2083,13 @@ function wp_unique_filename( $dir, $filename, $unique_filename_callback = null )
 		}
 
 		while ( file_exists( $dir . "/$filename" ) ) {
+			$new_number = (int) $number + 1;
 			if ( '' == "$number$ext" ) {
-				$filename = "$filename-" . ++$number;
+				$filename = "$filename-" . $new_number;
 			} else {
-				$filename = str_replace( array( "-$number$ext", "$number$ext" ), "-" . ++$number . $ext, $filename );
+				$filename = str_replace( array( "-$number$ext", "$number$ext" ), "-" . $new_number . $ext, $filename );
 			}
+			$number = $new_number;
 		}
 	}
 
@@ -2138,7 +2129,7 @@ function wp_upload_bits( $name, $deprecated, $bits, $time = null ) {
 
 	$wp_filetype = wp_check_filetype( $name );
 	if ( ! $wp_filetype['ext'] && ! current_user_can( 'unfiltered_upload' ) )
-		return array( 'error' => __( 'Invalid file type' ) );
+		return array( 'error' => __( 'Sorry, this file type is not permitted for security reasons.' ) );
 
 	$upload = wp_upload_dir( $time );
 
@@ -2254,7 +2245,7 @@ function wp_check_filetype( $filename, $mimes = null ) {
  * If it's determined that the extension does not match the file's real type,
  * then the "proper_filename" value will be set with a proper filename and extension.
  *
- * Currently this function only supports validating images known to getimagesize().
+ * Currently this function only supports renaming images validated via wp_get_image_mime().
  *
  * @since 3.0.0
  *
@@ -2278,14 +2269,15 @@ function wp_check_filetype_and_ext( $file, $filename, $mimes = null ) {
 		return compact( 'ext', 'type', 'proper_filename' );
 	}
 
-	// We're able to validate images using GD
-	if ( $type && 0 === strpos( $type, 'image/' ) && function_exists('getimagesize') ) {
+	$real_mime = false;
+
+	// Validate image types.
+	if ( $type && 0 === strpos( $type, 'image/' ) ) {
 
 		// Attempt to figure out what type of image it actually is
-		$imgstats = @getimagesize( $file );
+		$real_mime = wp_get_image_mime( $file );
 
-		// If getimagesize() knows what kind of image it really is and if the real MIME doesn't match the claimed MIME
-		if ( !empty($imgstats['mime']) && $imgstats['mime'] != $type ) {
+		if ( $real_mime && $real_mime != $type ) {
 			/**
 			 * Filters the list mapping image mime types to their respective extensions.
 			 *
@@ -2302,10 +2294,10 @@ function wp_check_filetype_and_ext( $file, $filename, $mimes = null ) {
 			) );
 
 			// Replace whatever is after the last period in the filename with the correct extension
-			if ( ! empty( $mime_to_ext[ $imgstats['mime'] ] ) ) {
+			if ( ! empty( $mime_to_ext[ $real_mime ] ) ) {
 				$filename_parts = explode( '.', $filename );
 				array_pop( $filename_parts );
-				$filename_parts[] = $mime_to_ext[ $imgstats['mime'] ];
+				$filename_parts[] = $mime_to_ext[ $real_mime ];
 				$new_filename = implode( '.', $filename_parts );
 
 				if ( $new_filename != $filename ) {
@@ -2315,6 +2307,29 @@ function wp_check_filetype_and_ext( $file, $filename, $mimes = null ) {
 				$wp_filetype = wp_check_filetype( $new_filename, $mimes );
 				$ext = $wp_filetype['ext'];
 				$type = $wp_filetype['type'];
+			} else {
+				// Reset $real_mime and try validating again.
+				$real_mime = false;
+			}
+		}
+	}
+
+	// Validate files that didn't get validated during previous checks.
+	if ( $type && ! $real_mime && extension_loaded( 'fileinfo' ) ) {
+		$finfo = finfo_open( FILEINFO_MIME_TYPE );
+		$real_mime = finfo_file( $finfo, $file );
+		finfo_close( $finfo );
+
+		/*
+		 * If $real_mime doesn't match what we're expecting, we need to do some extra
+		 * vetting of application mime types to make sure this type of file is allowed.
+		 * Other mime types are assumed to be safe, but should be considered unverified.
+		 */
+		if ( $real_mime && ( $real_mime !== $type ) && ( 0 === strpos( $real_mime, 'application' ) ) ) {
+			$allowed = get_allowed_mime_types();
+
+			if ( ! in_array( $real_mime, $allowed ) ) {
+				$type = $ext = false;
 			}
 		}
 	}
@@ -2332,6 +2347,39 @@ function wp_check_filetype_and_ext( $file, $filename, $mimes = null ) {
 	 * @param array  $mimes                     Key is the file extension with value as the mime type.
 	 */
 	return apply_filters( 'wp_check_filetype_and_ext', compact( 'ext', 'type', 'proper_filename' ), $file, $filename, $mimes );
+}
+
+/**
+ * Returns the real mime type of an image file.
+ *
+ * This depends on exif_imagetype() or getimagesize() to determine real mime types.
+ *
+ * @since 4.7.1
+ *
+ * @param string $file Full path to the file.
+ * @return string|false The actual mime type or false if the type cannot be determined.
+ */
+function wp_get_image_mime( $file ) {
+	/*
+	 * Use exif_imagetype() to check the mimetype if available or fall back to
+	 * getimagesize() if exif isn't avaialbe. If either function throws an Exception
+	 * we assume the file could not be validated.
+	 */
+	try {
+		if ( is_callable( 'exif_imagetype' ) ) {
+			$imagetype = exif_imagetype( $file );
+			$mime = ( $imagetype ) ? image_type_to_mime_type( $imagetype ) : false;
+		} elseif ( function_exists( 'getimagesize' ) ) {
+			$imagesize = getimagesize( $file );
+			$mime = ( isset( $imagesize['mime'] ) ) ? $imagesize['mime'] : false;
+		} else {
+			$mime = false;
+		}
+	} catch ( Exception $e ) {
+		$mime = false;
+	}
+
+	return $mime;
 }
 
 /**
@@ -3778,15 +3826,19 @@ function _deprecated_function( $function, $version, $replacement = null ) {
 	 */
 	if ( WP_DEBUG && apply_filters( 'deprecated_function_trigger_error', true ) ) {
 		if ( function_exists( '__' ) ) {
-			if ( ! is_null( $replacement ) )
+			if ( ! is_null( $replacement ) ) {
+				/* translators: 1: PHP function name, 2: version number, 3: alternative function name */
 				trigger_error( sprintf( __('%1$s is <strong>deprecated</strong> since version %2$s! Use %3$s instead.'), $function, $version, $replacement ) );
-			else
+			} else {
+				/* translators: 1: PHP function name, 2: version number */
 				trigger_error( sprintf( __('%1$s is <strong>deprecated</strong> since version %2$s with no alternative available.'), $function, $version ) );
+			}
 		} else {
-			if ( ! is_null( $replacement ) )
+			if ( ! is_null( $replacement ) ) {
 				trigger_error( sprintf( '%1$s is <strong>deprecated</strong> since version %2$s! Use %3$s instead.', $function, $version, $replacement ) );
-			else
+			} else {
 				trigger_error( sprintf( '%1$s is <strong>deprecated</strong> since version %2$s with no alternative available.', $function, $version ) );
+			}
 		}
 	}
 }
@@ -3902,15 +3954,19 @@ function _deprecated_file( $file, $version, $replacement = null, $message = '' )
 	if ( WP_DEBUG && apply_filters( 'deprecated_file_trigger_error', true ) ) {
 		$message = empty( $message ) ? '' : ' ' . $message;
 		if ( function_exists( '__' ) ) {
-			if ( ! is_null( $replacement ) )
+			if ( ! is_null( $replacement ) ) {
+				/* translators: 1: PHP file name, 2: version number, 3: alternative file name */
 				trigger_error( sprintf( __('%1$s is <strong>deprecated</strong> since version %2$s! Use %3$s instead.'), $file, $version, $replacement ) . $message );
-			else
+			} else {
+				/* translators: 1: PHP file name, 2: version number */
 				trigger_error( sprintf( __('%1$s is <strong>deprecated</strong> since version %2$s with no alternative available.'), $file, $version ) . $message );
+			}
 		} else {
-			if ( ! is_null( $replacement ) )
+			if ( ! is_null( $replacement ) ) {
 				trigger_error( sprintf( '%1$s is <strong>deprecated</strong> since version %2$s! Use %3$s instead.', $file, $version, $replacement ) . $message );
-			else
+			} else {
 				trigger_error( sprintf( '%1$s is <strong>deprecated</strong> since version %2$s with no alternative available.', $file, $version ) . $message );
+			}
 		}
 	}
 }
@@ -3962,15 +4018,19 @@ function _deprecated_argument( $function, $version, $message = null ) {
 	 */
 	if ( WP_DEBUG && apply_filters( 'deprecated_argument_trigger_error', true ) ) {
 		if ( function_exists( '__' ) ) {
-			if ( ! is_null( $message ) )
+			if ( ! is_null( $message ) ) {
+				/* translators: 1: PHP function name, 2: version number, 3: optional message regarding the change */
 				trigger_error( sprintf( __('%1$s was called with an argument that is <strong>deprecated</strong> since version %2$s! %3$s'), $function, $version, $message ) );
-			else
+			} else {
+				/* translators: 1: PHP function name, 2: version number */
 				trigger_error( sprintf( __('%1$s was called with an argument that is <strong>deprecated</strong> since version %2$s with no alternative available.'), $function, $version ) );
+			}
 		} else {
-			if ( ! is_null( $message ) )
+			if ( ! is_null( $message ) ) {
 				trigger_error( sprintf( '%1$s was called with an argument that is <strong>deprecated</strong> since version %2$s! %3$s', $function, $version, $message ) );
-			else
+			} else {
 				trigger_error( sprintf( '%1$s was called with an argument that is <strong>deprecated</strong> since version %2$s with no alternative available.', $function, $version ) );
+			}
 		}
 	}
 }
@@ -4018,8 +4078,10 @@ function _deprecated_hook( $hook, $version, $replacement = null, $message = null
 	if ( WP_DEBUG && apply_filters( 'deprecated_hook_trigger_error', true ) ) {
 		$message = empty( $message ) ? '' : ' ' . $message;
 		if ( ! is_null( $replacement ) ) {
+			/* translators: 1: WordPress hook name, 2: version number, 3: alternative hook name */
 			trigger_error( sprintf( __( '%1$s is <strong>deprecated</strong> since version %2$s! Use %3$s instead.' ), $hook, $version, $replacement ) . $message );
 		} else {
+			/* translators: 1: WordPress hook name, 2: version number */
 			trigger_error( sprintf( __( '%1$s is <strong>deprecated</strong> since version %2$s with no alternative available.' ), $hook, $version ) . $message );
 		}
 	}
@@ -4073,6 +4135,7 @@ function _doing_it_wrong( $function, $message, $version ) {
 			$message .= ' ' . sprintf( __( 'Please see <a href="%s">Debugging in WordPress</a> for more information.' ),
 				__( 'https://codex.wordpress.org/Debugging_in_WordPress' )
 			);
+			/* translators: Developer debugging message. 1: PHP function name, 2: Explanatory message, 3: Version information message */
 			trigger_error( sprintf( __( '%1$s was called <strong>incorrectly</strong>. %2$s %3$s' ), $function, $message, $version ) );
 		} else {
 			if ( is_null( $version ) ) {
@@ -4501,21 +4564,25 @@ function _wp_timezone_choice_usort_callback( $a, $b ) {
  * Gives a nicely-formatted list of timezone strings.
  *
  * @since 2.9.0
+ * @since 4.7.0 Added the `$locale` parameter.
  *
  * @staticvar bool $mo_loaded
+ * @staticvar string $locale_loaded
  *
  * @param string $selected_zone Selected timezone.
+ * @param string $locale        Optional. Locale to load the timezones in. Default current site locale.
  * @return string
  */
-function wp_timezone_choice( $selected_zone ) {
-	static $mo_loaded = false;
+function wp_timezone_choice( $selected_zone, $locale = null ) {
+	static $mo_loaded = false, $locale_loaded = null;
 
 	$continents = array( 'Africa', 'America', 'Antarctica', 'Arctic', 'Asia', 'Atlantic', 'Australia', 'Europe', 'Indian', 'Pacific');
 
-	// Load translations for continents and cities
-	if ( !$mo_loaded ) {
-		$locale = get_locale();
-		$mofile = WP_LANG_DIR . '/continents-cities-' . $locale . '.mo';
+	// Load translations for continents and cities.
+	if ( ! $mo_loaded || $locale !== $locale_loaded ) {
+		$locale_loaded = $locale ? $locale : get_locale();
+		$mofile = WP_LANG_DIR . '/continents-cities-' . $locale_loaded . '.mo';
+		unload_textdomain( 'continents-cities' );
 		load_textdomain( 'continents-cities', $mofile );
 		$mo_loaded = true;
 	}
@@ -5089,6 +5156,8 @@ function _device_can_upload() {
 /**
  * Test if a given path is a stream URL
  *
+ * @since 3.5.0
+ *
  * @param string $path The resource path or URL.
  * @return bool True if the path is a stream URL.
  */
@@ -5370,7 +5439,7 @@ function wp_delete_file( $file ) {
 	 *
 	 * @since 2.1.0
 	 *
-	 * @param string $medium Path to the file to delete.
+	 * @param string $file Path to the file to delete.
 	 */
 	$delete = apply_filters( 'wp_delete_file', $file );
 	if ( ! empty( $delete ) ) {
@@ -5559,7 +5628,7 @@ function wp_generate_uuid4() {
  *
  * @since 4.7.0
  *
- * @param $group Where the cache contents are grouped.
+ * @param string $group Where the cache contents are grouped.
  *
  * @return string $last_changed UNIX timestamp with microseconds representing when the group was last changed.
  */

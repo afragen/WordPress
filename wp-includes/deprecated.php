@@ -3763,7 +3763,7 @@ function wp_embed_handler_googlevideo( $matches, $attr, $url, $rawattr ) {
  * Retrieve path of paged template in current or parent template.
  *
  * @since 1.5.0
- * @deprecated 4.7.0 The paged.php template is no longer part of the theme template heirarchy.
+ * @deprecated 4.7.0 The paged.php template is no longer part of the theme template hierarchy.
  *
  * @return string Full path to paged template file.
  */
@@ -3788,7 +3788,7 @@ function get_paged_template() {
  * input to the return.
  *
  * @since 1.0.0
- * @deprecated deprecated since 4.7
+ * @deprecated 4.7.0 Officially dropped security support for Netscape 4.
  *
  * @param string $string
  * @return string

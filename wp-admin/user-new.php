@@ -37,7 +37,7 @@ if ( isset($_REQUEST['action']) && 'adduser' == $_REQUEST['action'] ) {
 	if ( false !== strpos( $user_email, '@' ) ) {
 		$user_details = get_user_by( 'email', $user_email );
 	} else {
-		if ( is_super_admin() ) {
+		if ( current_user_can( 'manage_network_users' ) ) {
 			$user_details = get_user_by( 'login', $user_email );
 		} else {
 			wp_redirect( add_query_arg( array('update' => 'enter_email'), 'user-new.php' ) );
@@ -63,7 +63,7 @@ if ( isset($_REQUEST['action']) && 'adduser' == $_REQUEST['action'] ) {
 	$redirect = 'user-new.php';
 	$username = $user_details->user_login;
 	$user_id = $user_details->ID;
-	if ( ( $username != null && !is_super_admin( $user_id ) ) && ( array_key_exists($blog_id, get_blogs_of_user($user_id)) ) ) {
+	if ( $username != null && array_key_exists( $blog_id, get_blogs_of_user( $user_id ) ) ) {
 		$redirect = add_query_arg( array('update' => 'addexisting'), 'user-new.php' );
 	} else {
 		if ( isset( $_POST[ 'noconfirmation' ] ) && current_user_can( 'manage_network_users' ) ) {
@@ -225,7 +225,7 @@ wp_enqueue_script( 'user-profile' );
  * @param bool $enable Whether to enable auto-complete for non-super admins. Default false.
  */
 if ( is_multisite() && current_user_can( 'promote_users' ) && ! wp_is_large_network( 'users' )
-	&& ( is_super_admin() || apply_filters( 'autocomplete_users_for_site_admins', false ) )
+	&& ( current_user_can( 'manage_network_users' ) || apply_filters( 'autocomplete_users_for_site_admins', false ) )
 ) {
 	wp_enqueue_script( 'user-suggest' );
 }
@@ -313,7 +313,7 @@ if ( ! empty( $messages ) ) {
 if ( is_multisite() ) {
 	if ( $do_both )
 		echo '<h2 id="add-existing-user">' . __( 'Add Existing User' ) . '</h2>';
-	if ( !is_super_admin() ) {
+	if ( ! current_user_can( 'manage_network_users' ) ) {
 		echo '<p>' . __( 'Enter the email address of an existing user on this network to invite them to this site. That person will be sent an email asking them to confirm the invite.' ) . '</p>';
 		$label = __('Email');
 		$type  = 'email';
@@ -348,8 +348,11 @@ if ( is_multisite() ) {
 	</tr>
 <?php if ( current_user_can( 'manage_network_users' ) ) { ?>
 	<tr>
-		<th scope="row"><label for="adduser-noconfirmation"><?php _e('Skip Confirmation Email') ?></label></th>
-		<td><label for="adduser-noconfirmation"><input type="checkbox" name="noconfirmation" id="adduser-noconfirmation" value="1" /> <?php _e( 'Add the user without sending an email that requires their confirmation.' ); ?></label></td>
+		<th scope="row"><?php _e( 'Skip Confirmation Email' ); ?></th>
+		<td>
+			<input type="checkbox" name="noconfirmation" id="adduser-noconfirmation" value="1" />
+			<label for="adduser-noconfirmation"><?php _e( 'Add the user without sending an email that requires their confirmation.' ); ?></label>
+		</td>
 	</tr>
 <?php } ?>
 </table>
@@ -462,7 +465,10 @@ $new_user_ignore_pass = $creating && isset( $_POST['noconfirmation'] ) ? wp_unsl
 	</tr>
 	<tr>
 		<th scope="row"><?php _e( 'Send User Notification' ) ?></th>
-		<td><label for="send_user_notification"><input type="checkbox" name="send_user_notification" id="send_user_notification" value="1" <?php checked( $new_user_send_notification ); ?> /> <?php _e( 'Send the new user an email about their account.' ); ?></label></td>
+		<td>
+			<input type="checkbox" name="send_user_notification" id="send_user_notification" value="1" <?php checked( $new_user_send_notification ); ?> />
+			<label for="send_user_notification"><?php _e( 'Send the new user an email about their account.' ); ?></label>
+		</td>
 	</tr>
 <?php } // !is_multisite ?>
 	<tr class="form-field">
@@ -478,8 +484,11 @@ $new_user_ignore_pass = $creating && isset( $_POST['noconfirmation'] ) ? wp_unsl
 	</tr>
 	<?php if ( is_multisite() && current_user_can( 'manage_network_users' ) ) { ?>
 	<tr>
-		<th scope="row"><label for="noconfirmation"><?php _e('Skip Confirmation Email') ?></label></th>
-		<td><label for="noconfirmation"><input type="checkbox" name="noconfirmation" id="noconfirmation" value="1" <?php checked( $new_user_ignore_pass ); ?> /> <?php _e( 'Add the user without sending an email that requires their confirmation.' ); ?></label></td>
+		<th scope="row"><?php _e( 'Skip Confirmation Email' ); ?></th>
+		<td>
+			<input type="checkbox" name="noconfirmation" id="noconfirmation" value="1" <?php checked( $new_user_ignore_pass ); ?> />
+			<label for="noconfirmation"><?php _e( 'Add the user without sending an email that requires their confirmation.' ); ?></label>
+		</td>
 	</tr>
 	<?php } ?>
 </table>
